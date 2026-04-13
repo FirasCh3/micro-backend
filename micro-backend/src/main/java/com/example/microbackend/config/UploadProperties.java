@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class UploadProperties {
 
     private String directory = "uploads";
+    private String resultDirectory = "result";
 
     public String getDirectory() {
         return directory;
@@ -13,5 +14,13 @@ public class UploadProperties {
 
     public void setDirectory(String directory) {
         this.directory = directory;
+    }
+
+    public String getResultDirectory() {
+        return resultDirectory;
+    }
+
+    public void setResultDirectory(String resultDirectory) {
+        this.resultDirectory = resultDirectory;
     }
 }

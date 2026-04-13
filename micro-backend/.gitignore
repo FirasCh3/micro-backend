@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Python virtual environments ###
+.venv/
+.venv-win/
+
+### Local runtime artifacts ###
+.m2repo/
+model-cache/
+uploads/
+result/

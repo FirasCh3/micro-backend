@@ -10,8 +10,13 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Service
 public class AudioStorageService {
@@ -19,14 +24,17 @@ public class AudioStorageService {
     private static final String DEFAULT_EXTENSION = ".wav";
 
     private final Path uploadDirectory;
+    private final Path resultDirectory;
 
     public AudioStorageService(UploadProperties uploadProperties) {
         this.uploadDirectory = Path.of(uploadProperties.getDirectory()).toAbsolutePath().normalize();
+        this.resultDirectory = Path.of(uploadProperties.getResultDirectory()).toAbsolutePath().normalize();
     }
 
     public StoredAudioFile store(MultipartFile file) {
         try {
             Files.createDirectories(uploadDirectory);
+            clearResultFiles();
 
             String storedFilename = generateStoredFilename(file.getOriginalFilename());
             Path targetPath = uploadDirectory.resolve(storedFilename).normalize();
@@ -42,6 +50,77 @@ public class AudioStorageService {
             return new StoredAudioFile(storedFilename, file.getSize(), targetPath);
         } catch (IOException exception) {
             throw new AudioStorageException("Failed to store uploaded audio file", exception);
+        }
+    }
+
+    public Path getLatestResultFile() {
+        try {
+            if (!Files.exists(resultDirectory)) {
+                throw new AudioStorageException("Result files not found");
+            }
+
+            try (Stream<Path> resultFiles = Files.list(resultDirectory)) {
+                Optional<Path> latestFile = resultFiles
+                        .filter(Files::isRegularFile)
+                        .max(Comparator.comparing(this::lastModifiedTime));
+
+                return latestFile.orElseThrow(() -> new AudioStorageException("Result files not found"));
+            }
+        } catch (IOException exception) {
+            throw new AudioStorageException("Failed to read result files", exception);
+        }
+    }
+
+    public List<Path> listResultFiles() {
+        try {
+            if (!Files.exists(resultDirectory)) {
+                throw new AudioStorageException("Result files not found");
+            }
+
+            try (Stream<Path> resultFiles = Files.list(resultDirectory)) {
+                List<Path> files = resultFiles
+                        .filter(Files::isRegularFile)
+                        .sorted(Comparator.comparing(Path::getFileName))
+                        .toList();
+
+                if (files.isEmpty()) {
+                    throw new AudioStorageException("Result files not found");
+                }
+
+                return new ArrayList<>(files);
+            }
+        } catch (IOException exception) {
+            throw new AudioStorageException("Failed to read result files", exception);
+        }
+    }
+
+    public Path getResultFile(String filename) {
+        Path targetPath = resultDirectory.resolve(filename).normalize();
+
+        if (!targetPath.startsWith(resultDirectory) || !Files.isRegularFile(targetPath)) {
+            throw new AudioStorageException("Result files not found");
+        }
+
+        return targetPath;
+    }
+
+    private void clearResultFiles() throws IOException {
+        if (!Files.exists(resultDirectory)) {
+            return;
+        }
+
+        try (Stream<Path> resultFiles = Files.list(resultDirectory)) {
+            for (Path resultFile : resultFiles.filter(Files::isRegularFile).toList()) {
+                Files.deleteIfExists(resultFile);
+            }
+        }
+    }
+
+    private java.nio.file.attribute.FileTime lastModifiedTime(Path path) {
+        try {
+            return Files.getLastModifiedTime(path);
+        } catch (IOException exception) {
+            throw new AudioStorageException("Failed to inspect result file", exception);
         }
     }
 
