@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,11 +17,13 @@ import java.util.List;
 public class AudioSeparationService {
 
     private final SeparationProperties separationProperties;
+    private final Path projectDirectory;
     private final Path resultDirectory;
 
     public AudioSeparationService(SeparationProperties separationProperties, UploadProperties uploadProperties) {
         this.separationProperties = separationProperties;
-        this.resultDirectory = Path.of(uploadProperties.getResultDirectory()).toAbsolutePath().normalize();
+        this.projectDirectory = resolveProjectDirectory();
+        this.resultDirectory = resolvePath(uploadProperties.getResultDirectory(), projectDirectory);
     }
 
     public void process(Path inputFile) {
@@ -28,11 +31,12 @@ public class AudioSeparationService {
             return;
         }
 
-        Path scriptPath = Path.of(separationProperties.getScriptPath()).toAbsolutePath().normalize();
-        Path cacheDirectory = Path.of(separationProperties.getModelCacheDirectory()).toAbsolutePath().normalize();
+        Path pythonExecutable = resolvePath(separationProperties.getPythonExecutable(), projectDirectory);
+        Path scriptPath = resolvePath(separationProperties.getScriptPath(), projectDirectory);
+        Path cacheDirectory = resolvePath(separationProperties.getModelCacheDirectory(), projectDirectory);
 
         List<String> command = new ArrayList<>();
-        command.add(separationProperties.getPythonExecutable());
+        command.add(pythonExecutable.toString());
         command.add(scriptPath.toString());
         command.add("--input");
         command.add(inputFile.toString());
@@ -45,6 +49,10 @@ public class AudioSeparationService {
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);
+        processBuilder.environment().put("PYTHONIOENCODING", "utf-8");
+        if (scriptPath.getParent() != null) {
+            processBuilder.directory(scriptPath.getParent().toFile());
+        }
 
         try {
             Process process = processBuilder.start();
@@ -77,5 +85,37 @@ public class AudioSeparationService {
         }
 
         return output.toString();
+    }
+
+    private Path resolvePath(String path, Path baseDirectory) {
+        Path configuredPath = Path.of(path);
+        if (configuredPath.isAbsolute()) {
+            return configuredPath.normalize();
+        }
+
+        return baseDirectory.resolve(path).normalize();
+    }
+
+    private Path resolveProjectDirectory() {
+        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
+        List<Path> candidates = new ArrayList<>();
+
+        Path currentDirectory = workingDirectory;
+        while (currentDirectory != null) {
+            candidates.add(currentDirectory.normalize());
+            candidates.add(currentDirectory.resolve("micro-backend").normalize());
+            candidates.add(currentDirectory.resolve("micro-backend").resolve("micro-backend").normalize());
+            currentDirectory = currentDirectory.getParent();
+        }
+
+        return candidates.stream()
+                .filter(this::isBackendProjectDirectory)
+                .findFirst()
+                .orElse(workingDirectory);
+    }
+
+    private boolean isBackendProjectDirectory(Path candidate) {
+        return Files.isRegularFile(candidate.resolve("pom.xml"))
+                && Files.isDirectory(candidate.resolve("src").resolve("main").resolve("java"));
     }
 }

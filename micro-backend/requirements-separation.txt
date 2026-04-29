@@ -1,3 +1,9 @@
-speechbrain
 torch
 torchaudio
+asteroid-filterbanks
+huggingface-hub
+PyYAML
+SoundFile
+
+# Windows note: install asteroid separately without optional evaluation deps:
+# .\.venv-win\python.exe -m pip install --no-deps asteroid

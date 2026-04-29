@@ -13,6 +13,7 @@ SAMPLE_WIDTH = 2
 RECORD_SECONDS = 5
 
 BACKEND_URL = "http://localhost:8080/upload"
+UPLOAD_TIMEOUT_SECONDS = 300
 
 TOTAL_BYTES = SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH * RECORD_SECONDS
 
@@ -63,7 +64,7 @@ def upload_to_backend(wav_io):
     }
 
     print("Uploading to backend...")
-    response = requests.post(BACKEND_URL, files=files, timeout=30)
+    response = requests.post(BACKEND_URL, files=files, timeout=UPLOAD_TIMEOUT_SECONDS)
 
     print("Status:", response.status_code)
     print("Response:", response.text)
@@ -80,5 +81,5 @@ def main():
     print("Done.")
 
 
-if name == "main":
+if __name__ == "__main__":
     main()

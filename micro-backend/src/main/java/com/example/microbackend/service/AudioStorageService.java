@@ -27,8 +27,8 @@ public class AudioStorageService {
     private final Path resultDirectory;
 
     public AudioStorageService(UploadProperties uploadProperties) {
-        this.uploadDirectory = Path.of(uploadProperties.getDirectory()).toAbsolutePath().normalize();
-        this.resultDirectory = Path.of(uploadProperties.getResultDirectory()).toAbsolutePath().normalize();
+        this.uploadDirectory = resolveProjectDirectory(uploadProperties.getDirectory());
+        this.resultDirectory = resolveProjectDirectory(uploadProperties.getResultDirectory());
     }
 
     public StoredAudioFile store(MultipartFile file) {
@@ -68,6 +68,25 @@ public class AudioStorageService {
             }
         } catch (IOException exception) {
             throw new AudioStorageException("Failed to read result files", exception);
+        }
+    }
+
+    public Path getLatestUploadFile() {
+        try {
+            if (!Files.exists(uploadDirectory)) {
+                throw new AudioStorageException("Upload file not found");
+            }
+
+            try (Stream<Path> uploadFiles = Files.list(uploadDirectory)) {
+                Optional<Path> latestFile = uploadFiles
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".wav"))
+                        .max(Comparator.comparing(this::lastModifiedTime));
+
+                return latestFile.orElseThrow(() -> new AudioStorageException("Upload file not found"));
+            }
+        } catch (IOException exception) {
+            throw new AudioStorageException("Failed to read upload files", exception);
         }
     }
 
@@ -138,5 +157,28 @@ public class AudioStorageService {
 
         String extension = filename.substring(extensionStart).toLowerCase(Locale.ROOT);
         return extension.contains("/") || extension.contains("\\") ? DEFAULT_EXTENSION : extension;
+    }
+
+    private Path resolveProjectDirectory(String directory) {
+        Path configuredPath = Path.of(directory);
+        if (configuredPath.isAbsolute()) {
+            return configuredPath.normalize();
+        }
+
+        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
+        List<Path> candidates = new ArrayList<>();
+
+        Path currentDirectory = workingDirectory;
+        while (currentDirectory != null) {
+            candidates.add(currentDirectory.resolve(directory).normalize());
+            candidates.add(currentDirectory.resolve("micro-backend").resolve(directory).normalize());
+            candidates.add(currentDirectory.resolve("micro-backend").resolve("micro-backend").resolve(directory).normalize());
+            currentDirectory = currentDirectory.getParent();
+        }
+
+        return candidates.stream()
+                .filter(Files::exists)
+                .findFirst()
+                .orElse(candidates.get(0));
     }
 }

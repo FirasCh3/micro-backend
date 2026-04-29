@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import tempfile
 from pathlib import Path
 
+import soundfile as sf
+import torch
 import torchaudio
 
 try:
@@ -11,17 +12,24 @@ try:
 except ImportError:  # SpeechBrain also exposes this in older versions.
     from speechbrain.pretrained import SepformerSeparation
 
+from speechbrain.utils.fetching import LocalStrategy
+
 
 TARGET_SAMPLE_RATE = 8000
 
 
 def load_model(model_id: str, cache_dir: Path) -> SepformerSeparation:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return SepformerSeparation.from_hparams(source=model_id, savedir=str(cache_dir))
+    return SepformerSeparation.from_hparams(
+        source=model_id,
+        savedir=str(cache_dir),
+        local_strategy=LocalStrategy.COPY,
+    )
 
 
 def normalize_audio(input_path: Path) -> tuple[object, int]:
-    waveform, sample_rate = torchaudio.load(str(input_path))
+    waveform_np, sample_rate = sf.read(str(input_path), always_2d=True, dtype="float32")
+    waveform = torch.from_numpy(waveform_np.T)
 
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -37,18 +45,17 @@ def separate(input_path: Path, output_dir: Path, model_id: str, cache_dir: Path)
     model = load_model(model_id, cache_dir)
 
     waveform, sample_rate = normalize_audio(input_path)
+    estimated_sources = model.separate_batch(waveform).detach().cpu()
+    number_of_sources = estimated_sources.shape[-1]
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        prepared_input = Path(temp_dir) / "prepared.wav"
-        torchaudio.save(str(prepared_input), waveform, sample_rate)
-
-        estimated_sources = model.separate_file(path=str(prepared_input)).detach().cpu()
-        number_of_sources = estimated_sources.shape[-1]
-
-        for index in range(number_of_sources):
-            output_path = output_dir / f"source{index + 1}.wav"
-            separated_waveform = estimated_sources[:, :, index]
-            torchaudio.save(str(output_path), separated_waveform, TARGET_SAMPLE_RATE)
+    for index in range(number_of_sources):
+        output_path = output_dir / f"source{index + 1}.wav"
+        separated_waveform = estimated_sources[:, :, index]
+        sf.write(
+            str(output_path),
+            separated_waveform.squeeze(0).cpu().numpy(),
+            TARGET_SAMPLE_RATE,
+        )
 
 
 def main() -> None:

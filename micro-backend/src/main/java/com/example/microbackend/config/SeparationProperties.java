@@ -7,9 +7,9 @@ public class SeparationProperties {
 
     private boolean enabled = true;
     private String pythonExecutable = "python";
-    private String scriptPath = "scripts/separate_audio.py";
-    private String modelId = "speechbrain/sepformer-libri3mix";
-    private String modelCacheDirectory = "model-cache/sepformer-libri3mix";
+    private String scriptPath = "seperate_audio2.py";
+    private String modelId = "Rahma89/voice-separation-model";
+    private String modelCacheDirectory = "model-cache/voice-separation-model";
 
     public boolean isEnabled() {
         return enabled;

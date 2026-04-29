@@ -5,6 +5,8 @@ import com.example.microbackend.service.AudioStorageException;
 import com.example.microbackend.service.ResultFileResponse;
 import com.example.microbackend.service.AudioStorageService;
 import com.example.microbackend.service.AudioSeparationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,8 @@ import java.util.List;
 @RestController
 public class AudioUploadController {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AudioUploadController.class);
+
     private final AudioStorageService audioStorageService;
     private final AudioSeparationService audioSeparationService;
 
@@ -50,6 +54,23 @@ public class AudioUploadController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/upload/latest")
+    public ResponseEntity<ResultFileResponse> latestUpload() {
+        Path uploadFile = audioStorageService.getLatestUploadFile();
+
+        return ResponseEntity.ok(new ResultFileResponse(
+                uploadFile.getFileName().toString(),
+                ServletUriComponentsBuilder.fromCurrentContextPath()
+                        .path("/upload/latest/audio")
+                        .toUriString()
+        ));
+    }
+
+    @GetMapping("/upload/latest/audio")
+    public ResponseEntity<Resource> streamLatestUpload() {
+        return streamAudioFile(audioStorageService.getLatestUploadFile());
+    }
+
     @GetMapping("/result")
     public ResponseEntity<List<ResultFileResponse>> listResults() {
         List<ResultFileResponse> results = audioStorageService.listResultFiles()
@@ -68,8 +89,11 @@ public class AudioUploadController {
 
     @GetMapping("/result/{filename:.+}")
     public ResponseEntity<Resource> streamResult(@PathVariable String filename) {
-        Path resultFile = audioStorageService.getResultFile(filename);
-        Resource resource = new FileSystemResource(resultFile);
+        return streamAudioFile(audioStorageService.getResultFile(filename));
+    }
+
+    private ResponseEntity<Resource> streamAudioFile(Path audioFile) {
+        Resource resource = new FileSystemResource(audioFile);
         long contentLength;
         MediaType mediaType = MediaTypeFactory.getMediaType(resource)
                 .orElse(MediaType.APPLICATION_OCTET_STREAM);
@@ -92,13 +116,16 @@ public class AudioUploadController {
     }
 
     @ExceptionHandler(AudioProcessingException.class)
-    public ResponseEntity<String> handleProcessingFailure() {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("processing error");
+    public ResponseEntity<String> handleProcessingFailure(AudioProcessingException exception) {
+        LOGGER.error("Audio processing failed", exception);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("processing error: " + exception.getMessage());
     }
 
     @ExceptionHandler(AudioStorageException.class)
     public ResponseEntity<String> handleStorageFailure(AudioStorageException exception) {
-        if ("Result files not found".equals(exception.getMessage())) {
+        if ("Result files not found".equals(exception.getMessage())
+                || "Upload file not found".equals(exception.getMessage())) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("files not found");
         }
 

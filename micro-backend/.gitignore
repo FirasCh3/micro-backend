@@ -41,3 +41,5 @@ build/
 model-cache/
 uploads/
 result/
+__pycache__/
+.pip-cache/
